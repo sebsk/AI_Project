@@ -13,32 +13,25 @@ import pandas as pd
 import numpy as np
 
 
-class dataset():
-    def __init__(self, filename, preprocessing=True, emoji=False, related=False):  # label can be binary wrt relatedness or informativeness
+class dataset_T6():
+    def __init__(self, filename, preprocessing=True, emoji=False):
         self.df = pd.read_csv(filename)
         col_dict = {}
         for old_feature in self.df.columns.values:
             col_dict.update({old_feature: old_feature.replace(' ', '')})
         self.df.rename(columns=col_dict, inplace=True)
-        self.df = self.df[self.df.InformationSource != 'Government']
-        self.df = self.df[self.df.Informativeness != 'Not applicable'].reset_index(drop=True)  # dataframe
         self.df = self.df.sample(frac=1).reset_index(drop=True)
-        if related:
-            label = [1] * self.df.shape[0]
-            idx = self.df.index[self.df.Informativeness == 'Not related'].tolist()
-            for i in idx: label[i] = 0
-        else:
-            label = [0] * self.df.shape[0]
-            idx = self.df.index[self.df.Informativeness == 'Related and informative'].tolist()
-            for i in idx: label[i] = 1
-        self.df['label'] = pd.Series(label)
+        label = [0] * self.df.shape[0]
+        idx = self.df.index[self.df.label == 'on-topic'].tolist()
+        for i in idx: label[i] = 1
+        self.df['label'] = pd.Series(label)  # label
         word_collection = []
         if preprocessing:
             if emoji:
                 emoji_re = "['\U0001F300-\U0001F5FF'|'\U0001F600-\U0001F64F'|'\U0001F680-\U0001F6FF'|'\u2600-\u26FF\u2700-\u27BF']"
-                emojis = [regexp_tokenize(t, emoji_re) for t in self.df.TweetText]
+                emojis = [regexp_tokenize(t, emoji_re) for t in self.df.tweet]
             p.set_options(p.OPT.URL, p.OPT.EMOJI, p.OPT.SMILEY)
-            all_tweets = [p.clean(t).lower() for t in self.df.TweetText]
+            all_tweets = [p.clean(t).lower() for t in self.df.tweet]
             tknzr = TweetTokenizer()
             all_tokens = [tknzr.tokenize(t) for t in all_tweets]
             en_stop = set(stopwords.words('english'))
@@ -57,45 +50,43 @@ class dataset():
             self.tokenizer = Tokenizer()  # tokenizer
             self.tokenizer.fit_on_texts(self.processed_texts)
         else:
-            for text in self.df.TweetText:
+            for text in self.df.tweet:
                 for word in text_to_word_sequence(text):
                     word_collection.append(word)
             self.vocab_size = len(set(word_collection))  # total_words
             self.tokenizer = Tokenizer()  # tokenizer
-            self.tokenizer.fit_on_texts(self.df.TweetText)
+            self.tokenizer.fit_on_texts(self.df.tweet)
 
     def embedding(self, external_tokenizer=None):  # return embedding texts
         if external_tokenizer is None and self.tokenizer is None:
-            print "please generate tokenizer first!"
-            return
+            return "please generate tokenizer first!"
         if external_tokenizer is None:
             try:
                 encoded_tweets = self.tokenizer.texts_to_sequences(self.processed_texts)
             except:
-                encoded_tweets = self.tokenizer.texts_to_sequences(self.df.TweetText)
+                encoded_tweets = self.tokenizer.texts_to_sequences(self.df.tweet)
             padded_tweets = pad_sequences(encoded_tweets, maxlen=140, padding='post')
             return padded_tweets
         try:
             encoded_tweets = external_tokenizer.texts_to_sequences(self.processed_texts)
         except:
-            encoded_tweets = external_tokenizer.texts_to_sequences(self.df.TweetText)
+            encoded_tweets = external_tokenizer.texts_to_sequences(self.df.tweet)
         padded_tweets = pad_sequences(encoded_tweets, maxlen=140, padding='post')
         return padded_tweets
 
     def bow(self, m='binary', external_tokenizer=None):  # return vectorized texts, m can be binary, count, tfdif, freq
         if external_tokenizer is None and self.tokenizer is None:
-            print "please generate tokenizer first!"
-            return
+            return "please generate tokenizer first!"
         if external_tokenizer is None:
             try:
                 encoded_tweets = self.tokenizer.texts_to_matrix(self.processed_texts, mode=m)
             except:
-                encoded_tweets = self.tokenizer.texts_to_matrix(self.df.TweetText, mode=m)
+                encoded_tweets = self.tokenizer.texts_to_matrix(self.df.tweet, mode=m)
             return encoded_tweets
         try:
             encoded_tweets = external_tokenizer.texts_to_matrix(self.processed_texts, mode=m)
         except:
-            encoded_tweets = external_tokenizer.texts_to_matrix(self.df.TweetText, mode=m)
+            encoded_tweets = external_tokenizer.texts_to_matrix(self.df.tweet, mode=m)
         return encoded_tweets
 
     def glove(self, embedding_index, vtr_dim):  # return GloVe embedding texts
@@ -111,22 +102,21 @@ class dataset():
         try:
             encoded_tweets = np.asarray(pad_sequences(self.tokenizer.texts_to_sequences(self.processed_texts), maxlen=140, padding='post'))
         except:
-            encoded_tweets = np.asarray(pad_sequences(self.tokenizer.texts_to_sequences(self.df.TweetText), maxlen=140, padding='post'))
+            encoded_tweets = np.asarray(pad_sequences(self.tokenizer.texts_to_sequences(self.df.tweet), maxlen=140, padding='post'))
         embedding_texts = model.predict_on_batch(encoded_tweets)
         return embedding_texts
 
-    def hashing_vectorizer(self, analyzer='word', ngram_range=(1,1), binary=False):  # bow with hashing trick for incremental learning
+    def hashing_vectorizer(self, analyzer='word', ngram_range=(1,1), binary=False):  # for incremental learning
         h = HashingVectorizer(analyzer=analyzer, ngram_range=ngram_range, binary=binary)
         # analyzer: 'word', 'char', 'char_wb'; ngram_range:(min,max)
         try:
             encoded_tweets = h.transform(self.processed_texts)
         except:
-            encoded_tweets = h.transform(self.df.TweetText)
+            encoded_tweets = h.transform(self.df.tweet)
         return encoded_tweets
 
     def shuffle(self):  # shuffle dataframe
         self.df = self.df.sample(frac=1).reset_index(drop=True)
-
 
 def import_glove(dim=100):
     embeddings_index = dict()
@@ -138,4 +128,3 @@ def import_glove(dim=100):
         embeddings_index[word] = coefs
     f.close()
     return embeddings_index, dim
-
