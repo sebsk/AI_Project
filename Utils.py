@@ -74,19 +74,31 @@ def metric_drawing(data_list, labels, title, Model=None, path=None): # data_list
     return precision, recall, f1
 
 
-def plot_history(history, title):
+def plot_history(history, title, dictionary=False):
     plt.figure(figsize=(16,6))
     plt.suptitle(title)
-    plt.subplot(121)
-    n_epoch = len(history.history['acc'])
-    plt.plot(range(1, n_epoch+1), history.history['loss'], label='loss')
-    plt.plot(range(1, n_epoch+1), history.history['val_loss'], label='val_loss')
-    plt.xlabel('epoch')
-    plt.ylabel('loss')
-    plt.legend()
-    plt.subplot(122)
-    plt.plot(range(1, n_epoch+1), history.history['acc'], label='acc')
-    plt.plot(range(1, n_epoch+1), history.history['val_acc'], label='val_acc')
+    if dictionary:
+        plt.subplot(121)
+        n_epoch = len(history['acc'])
+        plt.plot(range(1, n_epoch+1), history['loss'], label='loss')
+        plt.plot(range(1, n_epoch+1), history['val_loss'], label='val_loss')
+        plt.xlabel('epoch')
+        plt.ylabel('loss')
+        plt.legend()
+        plt.subplot(122)
+        plt.plot(range(1, n_epoch+1), history['acc'], label='acc')
+        plt.plot(range(1, n_epoch+1), history['val_acc'], label='val_acc')
+    else:
+        plt.subplot(121)
+        n_epoch = len(history.history['acc'])
+        plt.plot(range(1, n_epoch+1), history.history['loss'], label='loss')
+        plt.plot(range(1, n_epoch+1), history.history['val_loss'], label='val_loss')
+        plt.xlabel('epoch')
+        plt.ylabel('loss')
+        plt.legend()
+        plt.subplot(122)
+        plt.plot(range(1, n_epoch+1), history.history['acc'], label='acc')
+        plt.plot(range(1, n_epoch+1), history.history['val_acc'], label='val_acc')
     plt.xlabel('epoch')
     plt.ylabel('acc')
     plt.legend()
