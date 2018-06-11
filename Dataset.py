@@ -14,13 +14,16 @@ import numpy as np
 
 
 class dataset():
-    def __init__(self, filename, preprocessing=True, emoji=False, related=False):  # label can be binary wrt relatedness or informativeness
-        self.df = pd.read_csv(filename)
+    def __init__(self, filename=None, df=None, preprocessing=True, emoji=False, related=False):  # label can be binary wrt relatedness or informativeness
+        if filename is None:
+            self.df = df
+        else:
+            self.df = pd.read_csv(filename)
         col_dict = {}
         for old_feature in self.df.columns.values:
             col_dict.update({old_feature: old_feature.replace(' ', '')})
         self.df.rename(columns=col_dict, inplace=True)
-        self.df = self.df[self.df.InformationSource != 'Government']
+        self.df = self.df[self.df.InformationSource != 'Government'][self.df.InformationSource != 'Media'][self.df.InformationSource != 'NGOs']
         self.df = self.df[self.df.Informativeness != 'Not applicable'].reset_index(drop=True)  # dataframe
         self.df = self.df.sample(frac=1).reset_index(drop=True)
         if related:
@@ -98,7 +101,7 @@ class dataset():
             encoded_tweets = external_tokenizer.texts_to_matrix(self.df.TweetText, mode=m)
         return encoded_tweets
 
-    def glove(self, embedding_index, vtr_dim):  # return GloVe embedding texts
+    def glove(self, embedding_index, vtr_dim, normalize=False):  # return GloVe embedding texts
         embedding_matrix = np.zeros((self.vocab_size+1, vtr_dim))
         for word, i in self.tokenizer.word_index.iteritems():
             embedding_vector = embedding_index.get(word)
@@ -113,6 +116,12 @@ class dataset():
         except:
             encoded_tweets = np.asarray(pad_sequences(self.tokenizer.texts_to_sequences(self.df.TweetText), maxlen=140, padding='post'))
         embedding_texts = model.predict_on_batch(encoded_tweets)
+        if normalize:
+            for text in embedding_texts:
+                for word in text:
+                    v_len = float(np.linalg.norm(word))
+                    if v_len != 0:
+                        word /= v_len
         return embedding_texts
 
     def hashing_vectorizer(self, analyzer='word', ngram_range=(1,1), binary=False):  # bow with hashing trick for incremental learning
@@ -124,8 +133,11 @@ class dataset():
             encoded_tweets = h.transform(self.df.TweetText)
         return encoded_tweets
 
-    def shuffle(self):  # shuffle dataframe
-        self.df = self.df.sample(frac=1).reset_index(drop=True)
+    def shuffle(self, reset=False):  # shuffle dataframe
+        if reset:
+            self.df = self.df.sample(frac=1).reset_index(drop=True)
+        else:
+            self.df = self.df.sample(frac=1)
 
 
 def import_glove(dim=100):
@@ -138,4 +150,3 @@ def import_glove(dim=100):
         embeddings_index[word] = coefs
     f.close()
     return embeddings_index, dim
-
