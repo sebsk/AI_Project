@@ -1,36 +1,43 @@
 from keras.models import load_model
-from keras.callbacks import EarlyStopping, ModelCheckpoint
+from keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 from keras.utils import to_categorical
 from sklearn import metrics
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import keras.backend as K
 
 sns.set()
 
 
-def shuffle_train(model, data, text, path, k=10, n_epoch=10):
+def shuffle_train(model, data, text, path, k=10, n_epoch=10, val_size=0.2, batch_size=64, earlystop=None):
     min_val_loss = float('inf')
-    n_earlystopping = [5]*(k/4)+[4]*(k/4)+[3]*(k/4)+[2]*(k-k/4*3)
-    mcp_cnn = ModelCheckpoint(filepath=path, monitor='val_loss', save_best_only=True, save_weights_only=True)
+    if isinstance(earlystop, int):
+        n_earlystopping = [earlystop]*k
+    elif isinstance(earlystop, list) and len(earlystop)==k:
+        n_earlystopping = earlystop
+    else:
+        print 'earlystop is not specified or the input is invalid(has either to be an int or a list with length equal to k), use default setting'
+        n_earlystopping = [7]*(k/4)+[6]*(k/4)+[5]*(k/4)+[4]*(k-k/4*3)
+    mcp = ModelCheckpoint(filepath=path, monitor='val_loss', save_best_only=True, save_weights_only=True)
+    rlr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=1, verbose=0, mode='auto', cooldown=0, min_lr=0.0001)
     history = {'acc':[], 'loss':[], 'val_acc':[], 'val_loss':[]}
     ##### n_epoch*k epochs in total######
+    CLR = K.get_value(model.optimizer.lr)
     for i in range(k):
+        K.set_value(model.optimizer.lr, CLR)
         df = data.df.sample(frac=1)
         tweet_g = text[df.index.values]
-        his = model.fit(tweet_g, to_categorical(df.label), callbacks=[EarlyStopping(monitor='val_loss', patience=n_earlystopping[i]),
-                                mcp_cnn], validation_split=0.3, batch_size=64, epochs=n_epoch)
+        his = model.fit(tweet_g, to_categorical(df.label), callbacks=[EarlyStopping(monitor='val_loss', patience=n_earlystopping[i], min_delta=0.001),
+            mcp, rlr], validation_split=val_size, batch_size=batch_size, epochs=n_epoch)
         for metric in ['acc', 'loss', 'val_acc', 'val_loss']:
             history[metric].extend(his.history[metric])
         if min(his.history['val_loss']) < min_val_loss:
             min_val_loss = min(his.history['val_loss'])
-            model.load_weights(path)
-        if len(his.history['acc']) > n_earlystopping[i]+1:
-            stop = True
-            for j in range(1,n_earlystopping[i]+1):
-                if his.history['val_loss'][-j] < his.history['val_loss'][-j-1]:
-                    stop = False
-            if stop: break
+        if len(his.history['acc']) < n_epoch:
+            break
+        CLR = K.get_value(model.optimizer.lr)
+        model.load_weights(path)
     model.save(path)
     return history
 
